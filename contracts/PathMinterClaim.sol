@@ -5,6 +5,7 @@ pragma solidity ^0.8.4;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+
 contract PathMinterClaim is Ownable{
 
     IERC20 private token;
@@ -25,11 +26,31 @@ contract PathMinterClaim is Ownable{
     event claimedToken(address indexed minter, uint tokensClaimed, uint totalClaimed);
 
     constructor (address _tokenAddress, uint256 _startTime, uint256 _endVesting, uint256 _initialPercentage) {
-        require(_startTime >= block.timestamp);
+        require(_startTime <= _endVesting, "start time should be larger than endtime");
         token = IERC20(_tokenAddress);
         startTime = _startTime;
         endVesting = _endVesting;
         initialPercentage = _initialPercentage;
+    }
+
+
+
+    function getClaimTotal(address _recipient) public view returns (uint amount) {
+        return  calculateClaimAmount(_recipient) - allocations[_recipient].amountClaimed;
+    }
+
+    // view function to calculate claimable tokens
+    function calculateClaimAmount(address _recipient) internal view returns (uint amount) {
+         uint newClaimAmount;
+
+        if (block.timestamp >= endVesting) {
+            newClaimAmount = allocations[_recipient].totalAllocated;
+        }
+        else {
+            newClaimAmount = allocations[_recipient].initialAllocation;
+            newClaimAmount += ((allocations[_recipient].totalAllocated - allocations[_recipient].initialAllocation) / (endVesting - startTime)) * (block.timestamp - startTime);
+        }
+        return newClaimAmount;
     }
 
     /**
@@ -55,27 +76,18 @@ contract PathMinterClaim is Ownable{
     }
 
     /**
-    * @dev Allows msg.sender to claim their allocated tokens. Able to claim monthly
+    * @dev Allows msg.sender to claim their allocated tokens
      */
 
     function claim() external {
-        require(allocations[msg.sender].amountClaimed < allocations[msg.sender].totalAllocated);
-        require(startTime >= block.timestamp);
-        uint newClaimAmount;
-
-        if (block.timestamp >= endVesting) {
-            newClaimAmount = allocations[msg.sender].totalAllocated;
-        }
-        else {
-            //check to make sure that number of months does not go beyond vesting duration
-            newClaimAmount = allocations[msg.sender].initialAllocation;
-            newClaimAmount += ((allocations[msg.sender].totalAllocated - allocations[msg.sender].initialAllocation) / (endVesting - startTime)) * (block.timestamp - startTime);
-        }
+        require(allocations[msg.sender].amountClaimed < allocations[msg.sender].totalAllocated, "Address should have some allocated tokens");
+        require(startTime <= block.timestamp, "Start time of claim should be later than current time");
         //transfer tokens after subtracting tokens claimed
-        uint tokensToClaim = newClaimAmount - allocations[msg.sender].amountClaimed;
+        uint newClaimAmount = calculateClaimAmount(msg.sender);
+        uint tokensToClaim = getClaimTotal(msg.sender);
         allocations[msg.sender].amountClaimed = newClaimAmount;
-        require(token.transfer(msg.sender, tokensToClaim));
         grandTotalClaimed += tokensToClaim;
+        require(token.transfer(msg.sender, tokensToClaim));
         emit claimedToken(msg.sender, tokensToClaim, allocations[msg.sender].amountClaimed);
     }
 }
