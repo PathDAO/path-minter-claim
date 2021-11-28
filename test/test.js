@@ -20,20 +20,20 @@ describe("Path Token contract", function () {
     //deploy contract
     Path = await PathToken.deploy("1000000000000000000000000000");
     PathAddr = Path.address
-    PathMinterClaim = await PathMinterClaimContract.deploy(PathAddr, timeStart, timeStart + 100, 15);
+    PathMinterClaim = await PathMinterClaimContract.deploy(PathAddr, timeStart, timeStart + 100);
     await Path.transfer(PathMinterClaim.address, "100000000000000000000000000");
 
   });
 
   describe("Add allocations", function () {
     it("Should add allocations to contract", async function () {
-      await PathMinterClaim.setAllocation([addr2.address], ["40000000000000000000000"])
+      await PathMinterClaim.setAllocation([addr2.address], ["40000000000000000000000"],[15])
     });
   });
 
   describe("Claim the correct amount", function () {
     it("Should allow the right claim amount to contract", async function () {
-      await PathMinterClaim.setAllocation([addr1.address], ["100000000000000000000000"])
+      await PathMinterClaim.setAllocation([addr1.address], ["100000000000000000000000"], [15])
       await network.provider.send("evm_setNextBlockTimestamp", [timeStart + 9])
       await network.provider.send("evm_mine") 
       await PathMinterClaim.connect(addr1).claim()
@@ -46,7 +46,7 @@ describe("Path Token contract", function () {
 
   describe("Claim the correct amount after initial allocation", function () {
     it("Should allow the right claim amount to contract after initial allocation is claimed", async function () {
-      await PathMinterClaim.setAllocation([addr1.address], ["100000000000000000000000"])
+      await PathMinterClaim.setAllocation([addr1.address], ["100000000000000000000000"],[15])
       await PathMinterClaim.connect(addr1).claim()
 
       await network.provider.send("evm_increaseTime", [10])
@@ -57,6 +57,26 @@ describe("Path Token contract", function () {
 
       const timeElapsed = blockAfter.timestamp - timeStart
       await PathMinterClaim.connect(addr1).claim()
+
+      const balance = ethers.utils.formatEther(await Path.balanceOf(addr1.address))
+      const expected = 100000 * 0.15 + (((100000 - (100000 * 0.15)) * ((timeElapsed + 1) / 100)))
+      expect(parseFloat(balance)).to.equal(parseFloat(expected));
+    });
+  });
+
+  describe("Claim the correct amount after initial allocation", function () {
+    it("Should allow the right claim amount to contract after initial allocation is claimed for transfer function", async function () {
+      await PathMinterClaim.setAllocation([addr1.address], ["100000000000000000000000"],[15])
+      await PathMinterClaim.connect(addr1).transferTokens(addr1.address)
+
+      await network.provider.send("evm_increaseTime", [10])
+      await network.provider.send("evm_mine")
+      const blockNumAfter = await ethers.provider.getBlockNumber();
+      const blockAfter = await ethers.provider.getBlock(blockNumAfter);
+      const timestampAfter = blockAfter.timestamp;
+
+      const timeElapsed = blockAfter.timestamp - timeStart
+      await PathMinterClaim.connect(addr1).transferTokens(addr1.address)
 
       const balance = ethers.utils.formatEther(await Path.balanceOf(addr1.address))
       const expected = 100000 * 0.15 + (((100000 - (100000 * 0.15)) * ((timeElapsed + 1) / 100)))
